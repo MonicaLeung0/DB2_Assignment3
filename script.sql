@@ -44,6 +44,9 @@ DECLARE
     -- Helper / counters
     v_row_index     PLS_INTEGER := 0;
 
+    v_acct_exists NUMBER :=0;
+
+
 BEGIN
 -- Transaction grouping
     OPEN c_txns;
@@ -75,12 +78,46 @@ BEGIN
                 v_total_credit := v_total_credit + NVL(v_amount,0);
             END IF;
 
+            IF v_error_flag = FALSE THEN
+
+            -- Missing transaction number
+            IF v_txn_no is null THEN
+            v_error_flag := true;
+            v_error_msg := 'transaction number is missing!';
+
+            -- Invalid transaction type
+            ElSIF v_tran_type not in ('D', 'C') then 
+                v_error_flag := true;
+                v_error_msg := 'Invalid transaction type: ' || v_tran_type;
+
+            -- Negative transaction amount
+            elsif v_amount < 0 THEN
+             v_error_flag := true;
+             v_error_msg := 'Negative transaction amount: ' || v_amount;
+
+            -- Invalid account number
+            else 
+              select COUNT(*) into v_acct_exists from account where account_no = v_account_no;
+              if v_acct_exists = 0 then 
+                v_error_flag := true;
+                v_error_msg := 'Invalid account number: ' || v_account_no;
+
+            END IF;
+            END IF;
+
+            END IF;
             -- print row for debugging
             DBMS_OUTPUT.PUT_LINE('Row '||v_row_index||': acct='||v_account_no||', type='||v_tran_type||', amt='||v_amount);
 
         END LOOP;
         CLOSE c_txn_rows;
 
+        If v_error_flag = false THEN
+            if v_total_debit != v_total_credit then 
+                v_error_flag := true;
+                v_error_msg := 'Debits ('||  v_total_debit || ') do not equal Credits (' || v_total_credit || ')';
+            END IF;
+            END IF;
         -- output totals
         DBMS_OUTPUT.PUT_LINE('  Debit Total  = ' || v_total_debit);
         DBMS_OUTPUT.PUT_LINE('  Credit Total = ' || v_total_credit);
