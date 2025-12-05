@@ -84,7 +84,52 @@ BEGIN
         -- output totals
         DBMS_OUTPUT.PUT_LINE('  Debit Total  = ' || v_total_debit);
         DBMS_OUTPUT.PUT_LINE('  Credit Total = ' || v_total_credit);
+  IF v_error_flag = FALSE THEN
 
+            INSERT INTO transaction_history
+                (transaction_no, transaction_date, description)
+            VALUES
+                (v_txn_no, v_txn_date, v_description);
+
+            FOR det_rec IN c_txn_rows(v_txn_no) LOOP
+                INSERT INTO transaction_detail
+                    (transaction_no, account_no, transaction_type, transaction_amount)
+                VALUES (
+                    det_rec.transaction_no,
+                    det_rec.account_no,
+                    det_rec.transaction_type,
+                    det_rec.transaction_amount
+                );
+
+                DECLARE
+                    v_default_type account_type.default_trans_type%TYPE;
+                    v_balance      account.account_balance%TYPE;
+                    v_newbal       account.account_balance%TYPE;
+                BEGIN
+                    SELECT at.default_trans_type, a.account_balance
+                    INTO   v_default_type, v_balance
+                    FROM   account a
+                    JOIN   account_type at
+                    ON     a.account_type_code = at.account_type_code
+                    WHERE  a.account_no = det_rec.account_no;
+
+                    IF v_default_type = det_rec.transaction_type THEN
+                        v_newbal := v_balance + det_rec.transaction_amount;
+                    ELSE
+                        v_newbal := v_balance - det_rec.transaction_amount;
+                    END IF;
+
+                    UPDATE account
+                    SET account_balance = v_newbal
+                    WHERE account_no = det_rec.account_no;
+                END;
+
+            END LOOP;
+
+            DELETE FROM new_transactions
+            WHERE transaction_no = v_txn_no;
+
+        END IF;
 
     END LOOP;
     CLOSE c_txns;
