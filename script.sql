@@ -46,6 +46,8 @@ DECLARE
 
     v_acct_exists NUMBER :=0;
 
+    c_DEBIT  CONSTANT CHAR(1) := 'D';
+    c_CREDIT CONSTANT CHAR(1) := 'C';
 
 BEGIN
 -- Transaction grouping
@@ -72,9 +74,9 @@ BEGIN
             v_row_index := v_row_index + 1;
 
             
-            IF v_tran_type = 'D' THEN
+            IF v_tran_type = c_DEBIT THEN
                 v_total_debit := v_total_debit + NVL(v_amount,0);
-            ELSIF v_tran_type = 'C' THEN
+            ELSIF v_tran_type = c_CREDIT THEN
                 v_total_credit := v_total_credit + NVL(v_amount,0);
             END IF;
 
@@ -86,7 +88,7 @@ BEGIN
             v_error_msg := 'transaction number is missing!';
 
             -- Invalid transaction type
-            ElSIF v_tran_type not in ('D', 'C') then 
+            ElSIF v_tran_type not in (c_DEBIT, c_CREDIT) then 
                 v_error_flag := true;
                 v_error_msg := 'Invalid transaction type: ' || v_tran_type;
 
@@ -121,6 +123,17 @@ BEGIN
         -- output totals
         DBMS_OUTPUT.PUT_LINE('  Debit Total  = ' || v_total_debit);
         DBMS_OUTPUT.PUT_LINE('  Credit Total = ' || v_total_credit);
+        IF v_error_flag = TRUE THEN
+            INSERT INTO wkis_error_log (transaction_no,
+                                        transaction_date,
+                                        description,
+                                        error_msg)
+            VALUES (v_txn_no,
+                    v_txn_date,
+                    v_description,
+                    v_error_msg);
+        END IF;
+
   IF v_error_flag = FALSE THEN
 
             INSERT INTO transaction_history
@@ -171,10 +184,45 @@ BEGIN
     END LOOP;
     CLOSE c_txns;
 
+        -- Handle missing (NULL) transaction numbers
+    FOR bad_rec IN (
+        SELECT transaction_no,
+               transaction_date,
+               description
+        FROM new_transactions
+        WHERE transaction_no IS NULL
+    ) LOOP
+        INSERT INTO wkis_error_log (transaction_no,
+                                    transaction_date,
+                                    description,
+                                    error_msg)
+        VALUES (bad_rec.transaction_no,
+                bad_rec.transaction_date,
+                bad_rec.description,
+                'Transaction number is missing.');
+    END LOOP;
+
+    COMMIT;
+
+
     DBMS_OUTPUT.PUT_LINE('Done grouping.'); 
 
 EXCEPTION
     WHEN OTHERS THEN
+        -- Log unexpected/system errors as well
+        INSERT INTO wkis_error_log (
+            transaction_no,
+            transaction_date,
+            description,
+            error_msg
+        )
+        VALUES (
+            v_txn_no,          -- may be NULL if error occurred before first transaction
+            v_txn_date,        -- same
+            v_description,     -- same
+            SQLERRM            -- system-generated error message
+        );
+
         DBMS_OUTPUT.PUT_LINE('Unexpected block failure: ' || SQLERRM);
 END;
 /
