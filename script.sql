@@ -209,6 +209,9 @@ BEGIN
 
 EXCEPTION
     WHEN OTHERS THEN
+        -- Capture system-generated error message
+        v_error_msg := SQLERRM;
+
         -- Log unexpected/system errors as well
         INSERT INTO wkis_error_log (
             transaction_no,
@@ -217,12 +220,13 @@ EXCEPTION
             error_msg
         )
         VALUES (
-            v_txn_no,          -- may be NULL if error occurred before first transaction
-            v_txn_date,        -- same
-            v_description,     -- same
-            SQLERRM            -- system-generated error message
+            v_txn_no,       -- may be NULL if error occurred before first transaction
+            v_txn_date,     -- same
+            v_description,  -- same
+            v_error_msg     -- system-generated error message
         );
 
-        DBMS_OUTPUT.PUT_LINE('Unexpected block failure: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Unexpected block failure: ' || v_error_msg);
 END;
 /
+
